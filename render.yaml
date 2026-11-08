@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: lucky-tcp-bot
+    runtime: python
+    region: singapore
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python3 main.py
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: BOT_UID
+        value: "8420585840"
+      - key: BOT_PASSWORD
+        value: "telegram@raigenffofc-qozc10"
+      - key: REGION_PREF
+        value: "VN"
+      - key: ADMIN_UID
+        value: "2996528672"
+      - key: BASE_EMOTE_ID
+        value: "909000001"
