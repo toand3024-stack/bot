@@ -1932,6 +1932,9 @@ async def TcPOnLine(ip, port, key, iv, AutHToKen, reconnect_delay=0.5):
                                 INV_JOIN = await AutH_Chat(3, uid_g, chat_code, key, iv)
                                 await SEndPacKeT(whisper_writer, online_writer, 'ChaT', INV_JOIN)
 
+                            # Tự động sử dụng hành động /b 3 (914038001) để đổi trang phục khi vào đội
+                            asyncio.create_task(_auto_bundle_on_squad_join(uid_g, key, iv, region))
+
                             if str(uid_g) != str(bot_uid):
                                 asyncio.create_task(send_welcome(uid_g, key, iv))
                                 try:
@@ -1969,6 +1972,7 @@ async def TcPOnLine(ip, port, key, iv, AutHToKen, reconnect_delay=0.5):
                             if f5.get('2', {}).get('data') == 5:
                                 in_squad = False
                                 current_squad_uid = None
+                                AUTO_BUNDLE_LAST.clear()
                                 chat_code = f5.get('17', {}).get('data')
                                 if chat_code is not None:
                                     WELCOMED.pop(chat_code, None)
@@ -2058,6 +2062,26 @@ async def _run_titles(chat_type, sender_uid, chat_id, key, iv):
         chat_type, "[B][C][FFFFFF]✅ Đã gửi toàn bộ danh hiệu thành công!",
         sender_uid, chat_id, key, iv
     )
+
+
+AUTO_BUNDLE_LAST = {}
+
+
+async def _auto_bundle_on_squad_join(squad_id, key, iv, reg, bid=914038001):
+    try:
+        now = time.time()
+        if now - AUTO_BUNDLE_LAST.get(squad_id, 0) < 6.0:
+            return
+        AUTO_BUNDLE_LAST[squad_id] = now
+        await asyncio.sleep(0.5)
+        anim_pkt = await animation_packet(bid, key, iv, reg or "VN")
+        await SEndPacKeT(whisper_writer, online_writer, 'OnLine', anim_pkt)
+        await asyncio.sleep(3)
+        b_pkt = await Look_Changer(bid, key, iv, look_type=1, region=reg or "VN")
+        await SEndPacKeT(whisper_writer, online_writer, 'OnLine', b_pkt)
+        print(f"👕 [AUTO /b 3] Đã tự động đổi trang phục 3 ({bid}) khi vào đội!")
+    except Exception as e:
+        print(f"❌ Auto bundle error: {e}")
 
 
 async def _run_bundle(bundle_num, bid, chat_type, sender_uid, chat_id, key, iv, reg):
@@ -2623,6 +2647,7 @@ async def TcPChaT(ip, port, AutHToKen, key, iv, ready_event, region,
                         current_squad_uid = None
                         current_squad_code = None
                         active_squad_members.clear()
+                        AUTO_BUNDLE_LAST.clear()
 
                 # ═══════════════════════════════════════════════
                 # /spm <uid> (admin only)
