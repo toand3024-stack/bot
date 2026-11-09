@@ -480,8 +480,6 @@ WELCOME_TEXT = (
     "[B][C][FF00FF]╭━━━✦ [00FFFF]W E L C O M E[FF00FF] ✦━━━╮\n"
     "[B][C][FFFF00]Hello! Welcome to [00FF00]LUCKY TCP BOT[FFFF00]!\n"
     "[B][C][FF6EC7]Wishing you a great time in game!\n"
-    "[B][C][00FFFF]➤ [FFFFFF]Type [00FF00]/help [FFFFFF]for all commands\n"
-    "[B][C][00FFFF]➤ [FFFFFF]Type [FFFF00]/menu [FFFFFF]for emote list\n"
     "[B][C][FFA500]━━━ ✦ CONTACT INFO ✦ ━━━\n"
     "[B][C][FF007F]♪ TikTok : [00FFFF]tik@dtt_027\n"
     "[B][C][00FF00]✈ Telegram: [FFFF00]tele:dtt_027\n"
@@ -550,7 +548,6 @@ async def DEVIL(client_id, key, iv):
 [B][C][00FFFF]tik@dtt_027
 [B][C][FFFF00]tele:dtt_027
 [FF00FF]━━━━━━━━━━━━━━━━━━━━━━━━━━
-[B][C][00FF00]T Y P E   /help   O R   /menu
         """
     fields = {
         1: 5,
@@ -588,7 +585,6 @@ async def DEVIL1(client_id, key, iv):
 [B][C][00FFFF]tik@dtt_027
 [B][C][FFFF00]tele:dtt_027
 [FF00FF]━━━━━━━━━━━━━━━━━━━━━━━━━━
-[B][C][00FF00]T Y P E   /help   O R   /menu
         """
     fields = {1: int(client_id), 2: 5, 4: 50, 5: {1: int(client_id), 2: gay_text}}
     packet = await CrEaTe_ProTo(fields)
