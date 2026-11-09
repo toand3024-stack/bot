@@ -2142,25 +2142,73 @@ async def _run_status_check(target_uid, chat_type, sender_uid, chat_id, key, iv)
 
 async def _run_ai_query(question, chat_type, sender_uid, chat_id, key, iv):
     await safe_send_message(
-        chat_type, "[B][C][FFFFFF]🤖 AI đang suy nghĩ...",
+        chat_type, "[B][C][00FFFF]🤖 AI đang suy nghĩ...",
         sender_uid, chat_id, key, iv
     )
+    answer = None
+    browser_headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "Referer": "https://pollinations.ai/",
+        "Origin": "https://pollinations.ai",
+    }
     try:
+        import urllib.parse
+        q_enc = urllib.parse.quote(question)
+        sys_enc = urllib.parse.quote("Bạn là trợ lý AI thông minh trong game Free Fire. Trả lời câu hỏi bằng tiếng Việt thật ngắn gọn, súc tích (tối đa 1-2 câu ngắn, dưới 40 từ) để vừa khung chat trong game.")
         async with aiohttp.ClientSession() as session:
             async with session.get(
-                "https://9x-ai.vercel.app/ask",
-                params={"key": "SUMON9X", "message": question},
-                timeout=aiohttp.ClientTimeout(total=15)
+                f"https://text.pollinations.ai/{q_enc}?system={sys_enc}",
+                headers=browser_headers,
+                timeout=aiohttp.ClientTimeout(total=20)
             ) as r:
                 if r.status == 200:
-                    answer = (await r.text()).strip()
-                    msg = f"[B][C][FFFFFF]🤖 Phản hồi AI:\n\n[FFFFFF]{answer}"
-                else:
-                    msg = f"[B][C][FF0000]❌ Lỗi AI: {r.status}"
+                    text = await r.text()
+                    if text and not text.startswith("<!DOCTYPE") and not text.startswith("<html") and "Free limit reached" not in text:
+                        answer = text.strip()
     except Exception as e:
-        msg = f"[B][C][FF0000]❌ Lỗi: {e}"
-    P = await SEndMsG(chat_type, msg, sender_uid, chat_id, key, iv)
-    await SEndPacKeT(whisper_writer, online_writer, 'ChaT', P)
+        print(f"Pollinations GET error: {e}")
+
+    # Fallback endpoint POST nếu GET gặp trục trặc
+    if not answer:
+        try:
+            payload = {
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "Bạn là trợ lý AI trong Free Fire. Trả lời bằng tiếng Việt cực ngắn gọn dưới 40 từ."
+                    },
+                    {
+                        "role": "user",
+                        "content": question
+                    }
+                ],
+                "model": "openai"
+            }
+            post_headers = dict(browser_headers)
+            post_headers["Content-Type"] = "application/json"
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    "https://text.pollinations.ai/",
+                    json=payload,
+                    headers=post_headers,
+                    timeout=aiohttp.ClientTimeout(total=20)
+                ) as r:
+                    if r.status == 200:
+                        text = await r.text()
+                        if text and not text.startswith("<!DOCTYPE") and not text.startswith("<html") and "Free limit reached" not in text:
+                            answer = text.strip()
+        except Exception as e:
+            print(f"Pollinations POST fallback error: {e}")
+
+    if answer:
+        # Cắt ngắn nếu dài quá để tránh vượt giới hạn ký tự khung chat Free Fire
+        if len(answer) > 180:
+            answer = answer[:177] + "..."
+        msg = f"[B][C][00FF00]🤖 AI:\n[FFFFFF]{answer}"
+    else:
+        msg = "[B][C][FF0000]❌ AI đang bận hoặc không thể kết nối. Thử lại sau nhé!"
+
+    await safe_send_message(chat_type, msg, sender_uid, chat_id, key, iv)
 
 
 async def TcPChaT(ip, port, AutHToKen, key, iv, ready_event, region,
