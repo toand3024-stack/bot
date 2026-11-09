@@ -474,31 +474,18 @@ async def safe_send_message(chat_type, message, uid, chat_id, key, iv, max_retri
 
 HELP_DELAY = 0.1
 WELCOME_DELAY = 1
-WELCOME_COOLDOWN = 1800
+WELCOME_COOLDOWN = 6
 
 WELCOME_TEXT = (
-    "[B][C][FFFF00]╔════════════════════╗\n"
-    "[B][C][FFFF00]║  [FFFFFF]LUCKY TCP BOT[FFFF00]     ║\n"
-    "[B][C][FFFF00]║  [FFFFFF]CHÀO MỪNG BẠN[FFFF00]     ║\n"
-    "[B][C][FFFF00]╚════════════════════╝\n"
-    "\n"
-    "[B][C][FFFFFF]Xin chào, chào mừng đến với LUCKY TCP!\n"
-    "\n"
-    "[B][C][00FFFF]╭───── ✦ TÍNH NĂNG ✦ ─────╮\n"
-    "[B][FFFFFF]  ➤ Hệ thống AI thông minh\n"
-    "[B][FFFFFF]  ➤ Lệnh giải trí vui nhộn\n"
-    "[B][FFFFFF]  ➤ Công cụ tra cứu UID\n"
-    "[B][FFFFFF]  ➤ Hệ thống Emote & Danh hiệu\n"
-    "[B][FFFFFF]  ➤ Phản hồi siêu tốc\n"
-    "[B][C][00FFFF]╰────────────────────────╯\n"
-    "\n"
-    "[B][C][FFFFFF]Gõ /help để xem toàn bộ lệnh\n"
-    "[B][C][FFFFFF]Gõ /menu để mở danh sách emote\n"
-    "\n"
-    "[B][C][00FF00]━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-    "[B][C][FFD700]      LUCKY TCP PREMIUM  \n"
-    "[B][C][FFFFFF]   Nhanh • An Toàn • Thông Minh\n"
-    "[B][C][00FF00]━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    "[B][C][FF00FF]╭━━━✦ [00FFFF]W E L C O M E[FF00FF] ✦━━━╮\n"
+    "[B][C][FFFF00]Hello! Welcome to [00FF00]LUCKY TCP BOT[FFFF00]!\n"
+    "[B][C][FF6EC7]Wishing you a great time in game!\n"
+    "[B][C][00FFFF]➤ [FFFFFF]Type [00FF00]/help [FFFFFF]for all commands\n"
+    "[B][C][00FFFF]➤ [FFFFFF]Type [FFFF00]/menu [FFFFFF]for emote list\n"
+    "[B][C][FFA500]━━━ ✦ CONTACT INFO ✦ ━━━\n"
+    "[B][C][FF007F]♪ TikTok : [00FFFF]tik@dtt_027\n"
+    "[B][C][00FF00]✈ Telegram: [FFFF00]tele:dtt_027\n"
+    "[B][C][FF00FF]╰━━━━━━━━━━━━━━━━━━━━━╯"
 )
 WELCOMED = {}
 
@@ -554,20 +541,16 @@ async def DEVIL(client_id, key, iv):
 .
 .
 .
-[B][C][00FF00]★  L U C K Y   B O T ★
-[FF0000]━━━━━━━━━━━━━━━━━━━━━━━━━━
-[B][C][FF9900]D O N E   H A C K I N G
-[B][C][E75480]Y O U R   A C C O U N T
-[81DACA]━━━━━━━━━━━━━━━━━━━━━━━━━━
-[B][C][FF0000]F U C K   Y O U
-[CCFFCC]━━━━━━━━━━━━━━━━━━━━━━━━━━
-[B][C][81DACA]P O W E R E D   B Y   L U C K Y
-[FFFF00]━━━━━━━━━━━━━━━━━━━━━━━━━━
-[B][C][00FF00]F O L L O W   M E   O N   T I K T O K
-[B][C][FFFFFF]@rlx_lucky_
-[00008B]━━━━━━━━━━━━━━━━━━━━━━━━━━
-[B][C][81DACA]I F   Y O U   D O N T   F O L L O W   M E
-[B][C][FF0000]I   W I L L   B A N   Y O U R   A C C O U N T
+[B][C][FF00FF]★  W E L C O M E   T O   L U C K Y   B O T  ★
+[00FFFF]━━━━━━━━━━━━━━━━━━━━━━━━━━
+[B][C][FFFF00]H E L L O !   N I C E   T O   M E E T   Y O U
+[B][C][00FF00]H A V E   A   G R E A T   G A M E !
+[FF6EC7]━━━━━━━━━━━━━━━━━━━━━━━━━━
+[B][C][FFA500]C O N T A C T   A D M I N :
+[B][C][00FFFF]tik@dtt_027
+[B][C][FFFF00]tele:dtt_027
+[FF00FF]━━━━━━━━━━━━━━━━━━━━━━━━━━
+[B][C][00FF00]T Y P E   /help   O R   /menu
         """
     fields = {
         1: 5,
@@ -596,20 +579,16 @@ async def DEVIL1(client_id, key, iv):
 .
 .
 .
-[B][C][00FF00]★  L U C K Y   B O T ★
-[FF0000]━━━━━━━━━━━━━━━━━━━━━━━━━━
-[B][C][FF9900]D O N E   H A C K I N G
-[B][C][E75480]Y O U R   A C C O U N T
-[81DACA]━━━━━━━━━━━━━━━━━━━━━━━━━━
-[B][C][FF0000]F U C K   Y O U
-[CCFFCC]━━━━━━━━━━━━━━━━━━━━━━━━━━
-[B][C][81DACA]P O W E R E D   B Y   L U C K Y
-[FFFF00]━━━━━━━━━━━━━━━━━━━━━━━━━━
-[B][C][00FF00]F O L L O W   M E   O N   T I K T O K
-[B][C][FFFFFF]@rlx_lucky_
-[00008B]━━━━━━━━━━━━━━━━━━━━━━━━━━
-[B][C][81DACA]I F   Y O U   D O N T   F O L L O W   M E
-[B][C][FF0000]I   W I L L   B A N   Y O U R   A C C O U N T
+[B][C][FF00FF]★  W E L C O M E   T O   L U C K Y   B O T  ★
+[00FFFF]━━━━━━━━━━━━━━━━━━━━━━━━━━
+[B][C][FFFF00]H E L L O !   N I C E   T O   M E E T   Y O U
+[B][C][00FF00]H A V E   A   G R E A T   G A M E !
+[FF6EC7]━━━━━━━━━━━━━━━━━━━━━━━━━━
+[B][C][FFA500]C O N T A C T   A D M I N :
+[B][C][00FFFF]tik@dtt_027
+[B][C][FFFF00]tele:dtt_027
+[FF00FF]━━━━━━━━━━━━━━━━━━━━━━━━━━
+[B][C][00FF00]T Y P E   /help   O R   /menu
         """
     fields = {1: int(client_id), 2: 5, 4: 50, 5: {1: int(client_id), 2: gay_text}}
     packet = await CrEaTe_ProTo(fields)
@@ -1973,6 +1952,7 @@ async def TcPOnLine(ip, port, key, iv, AutHToKen, reconnect_delay=0.5):
                                 in_squad = False
                                 current_squad_uid = None
                                 AUTO_BUNDLE_LAST.clear()
+                                WELCOMED.clear()
                                 chat_code = f5.get('17', {}).get('data')
                                 if chat_code is not None:
                                     WELCOMED.pop(chat_code, None)
@@ -2648,6 +2628,7 @@ async def TcPChaT(ip, port, AutHToKen, key, iv, ready_event, region,
                         current_squad_code = None
                         active_squad_members.clear()
                         AUTO_BUNDLE_LAST.clear()
+                        WELCOMED.clear()
 
                 # ═══════════════════════════════════════════════
                 # /spm <uid> (admin only)
