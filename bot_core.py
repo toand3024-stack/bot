@@ -2452,6 +2452,7 @@ async def TcPChaT(ip, port, AutHToKen, key, iv, ready_event, region,
                     h2 = f"""[B][C]{h2_color}╭━━〔 LỆNH TRONG GAME 〕━━╮
 [B][FFFFFF]┃ /e <uid> : Gửi Emote
 [B][FFFFFF]┃ /e <tên> : Emote theo tên
+[B][FFFFFF]┃ /pb <tên>: Emote (bot ko múa)
 [B][FFFFFF]┃ /evo     : Emote súng Evo
 [B][FFFFFF]┃ /evos    : Vòng lặp Evo
 [B][FFFFFF]┃ /sevos   : Dừng vòng Evo
@@ -3059,14 +3060,17 @@ async def TcPChaT(ip, port, AutHToKen, key, iv, ready_event, region,
 
                 # ═══════════════════════════════════════════════
                 # /e <uid> <name/emote_id> | /e <name/emote_id>
+                # /pb <uid> <name/emote_id> | /pb <name/emote_id> (bot không múa theo)
                 # ═══════════════════════════════════════════════
-                elif inPuTMsG.startswith('/e '):
+                elif inPuTMsG.strip() in ('/e', '/pb') or inPuTMsG.startswith('/e ') or inPuTMsG.startswith('/pb '):
                     parts = inPuTMsG.strip().split()
+                    cmd_prefix = parts[0].lower() if parts else '/e'
+                    bot_dance = (cmd_prefix != '/pb')
                     try:
                         if len(parts) < 2:
                             await safe_send_message(
                                 XX,
-                                "[B][C][FF0000]Cách dùng: /e <tên emote> hoặc /e <uid> <tên/id>",
+                                f"[B][C][FF0000]Cách dùng: {cmd_prefix} <tên emote> hoặc {cmd_prefix} <uid> <tên/id>",
                                 uid, chat_id, key, iv
                             )
                             continue
@@ -3086,23 +3090,28 @@ async def TcPChaT(ip, port, AutHToKen, key, iv, ready_event, region,
                             )
                             continue
                         
-                        # Lấy danh sách UID mục tiêu: nếu không ghi rõ UID (chỉ /e <tên>), gửi cho cả người chơi và bot
+                        # Lấy danh sách UID mục tiêu:
+                        # - /e  : gửi cho cả người chơi và bot
+                        # - /pb : chỉ gửi cho người chơi (bot không múa theo)
                         if 'all' in [p.lower() for p in parts]:
                             tgt_uids = [int(uid)]
-                            if bot_uid and int(bot_uid) not in tgt_uids:
+                            if bot_dance and bot_uid and int(bot_uid) not in tgt_uids:
                                 tgt_uids.append(int(bot_uid))
                             for sm in active_squad_members:
-                                if int(sm) not in tgt_uids:
+                                if int(sm) not in tgt_uids and (bot_dance or not bot_uid or int(sm) != int(bot_uid)):
                                     tgt_uids.append(int(sm))
                         elif len(parts) == 2:
                             tgt_uids = [int(uid)]
-                            if bot_uid and int(bot_uid) not in tgt_uids:
+                            if bot_dance and bot_uid and int(bot_uid) not in tgt_uids:
                                 tgt_uids.append(int(bot_uid))
                         else:
-                            tgt_uids = [int(p) for p in parts[1:-1] if p.isdigit()]
+                            tgt_uids = [
+                                int(p) for p in parts[1:-1]
+                                if p.isdigit() and (bot_dance or not bot_uid or int(p) != int(bot_uid))
+                            ]
                             if not tgt_uids:
                                 tgt_uids = [int(uid)]
-                                if bot_uid and int(bot_uid) not in tgt_uids:
+                                if bot_dance and bot_uid and int(bot_uid) not in tgt_uids:
                                     tgt_uids.append(int(bot_uid))
                         
                         # Lấy ID emote
