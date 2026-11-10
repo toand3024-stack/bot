@@ -492,7 +492,7 @@ WELCOMED = {}
 async def send_welcome(chat_code, key, iv, delay=None, force=False):
     now = time.time()
     last = WELCOMED.get(chat_code)
-    cooldown = 1.5 if force else WELCOME_COOLDOWN
+    cooldown = 3.0 if force else WELCOME_COOLDOWN
     if last and now - last < cooldown:
         return
     WELCOMED[chat_code] = now
@@ -505,10 +505,10 @@ def _is_valid_player_uid(val, bot_uid=None, squad_uid=None, chat_code=None, squa
         u = int(val)
     except Exception:
         return False
-    if not (10_000_000 <= u <= 99_999_999_999):
+    if not (10_000_000 <= u <= 15_000_000_000):
         return False
     s = str(u)
-    if s.startswith(('90', '91', '92', '20', '21', '22', '11481')):
+    if s.startswith(('90', '91', '92', '20', '21', '22', '114', '124', '175', '176', '177', '178', '179')):
         return False
     for ex in (bot_uid, chat_code, squad_code):
         if ex is not None and s == str(ex):
@@ -524,32 +524,28 @@ def _extract_squad_players_from_0500(payload_hex, bot_uid=None, squad_uid=None, 
         return players
 
     def _walk_msg(results):
-        varints = {}
-        has_str_or_lvl = False
+        uid_cands = []
+        has_nickname = False
+        has_level = False
         for r in results:
             if r.wire_type == "varint":
-                varints.setdefault(r.field, []).append(r.data)
-                if r.field in (3, 4, 7, 12, 16, 17, 24) and isinstance(r.data, int):
-                    has_str_or_lvl = True
-            elif r.wire_type in ("string", "bytes") and r.field in (2, 6, 10):
-                has_str_or_lvl = True
+                if r.field == 1 and isinstance(r.data, int):
+                    uid_cands.append(r.data)
+                elif r.field == 7 and isinstance(r.data, int) and 1 <= r.data <= 500:
+                    has_level = True
+            elif r.wire_type == "string" and r.field == 6 and isinstance(r.data, str) and 1 <= len(r.data) <= 40:
+                has_nickname = True
             elif r.wire_type == "length_delimited" and hasattr(r.data, "results"):
                 _walk_msg(r.data.results)
 
-        if 1 in varints and has_str_or_lvl:
-            for cand in varints[1]:
+        if uid_cands and has_nickname and has_level:
+            for cand in uid_cands:
                 if _is_valid_player_uid(cand, bot_uid, squad_uid, chat_code, squad_code):
-                    if squad_uid is None or str(cand) != str(squad_uid) or len(results) >= 4:
-                        players.add(str(cand))
+                    players.add(str(cand))
 
     for top in parsed_results:
         if top.field == 5 and top.wire_type == "length_delimited" and hasattr(top.data, "results"):
             _walk_msg(top.data.results)
-            for sub in top.data.results:
-                if sub.field in (2, 3, 4, 5, 6) and sub.wire_type == "varint":
-                    if _is_valid_player_uid(sub.data, bot_uid, squad_uid, chat_code, squad_code):
-                        if squad_uid is None or str(sub.data) != str(squad_uid):
-                            players.add(str(sub.data))
     return players
 
 
@@ -1830,7 +1826,9 @@ async def TcPOnLine(ip, port, key, iv, AutHToKen, reconnect_delay=0.5):
     global emote_hijack, bot_uid, in_squad, current_squad_uid, current_squad_code, squad_opened_event
     global active_squad_members, welcomed_squad_members
 
+    consecutive_fast_drops = 0
     while True:
+        conn_start = time.time()
         try:
             reader, writer = await asyncio.open_connection(ip, int(port))
             online_writer = writer
@@ -1952,11 +1950,6 @@ async def TcPOnLine(ip, port, key, iv, AutHToKen, reconnect_delay=0.5):
                         else:
                             uid_g, chat_code, squad_code = None, None, None
 
-                        is_ext_invite = (
-                            isinstance(f5, dict) and '1' in f5 and '8' in f5 and
-                            chat_code is None and squad_code is None and pkt_type_4 not in (1, 4)
-                        )
-
                         if uid_g is not None and (chat_code is not None or squad_code is not None or pkt_type_4 in (1, 4)):
                             was_in_this_squad = (in_squad and str(current_squad_uid) == str(uid_g))
                             in_squad = True
@@ -1976,57 +1969,32 @@ async def TcPOnLine(ip, port, key, iv, AutHToKen, reconnect_delay=0.5):
                             if members_now:
                                 active_squad_members.update(members_now)
 
-                            if not was_in_this_squad:
-                                welcomed_squad_members.clear()
-                                welcomed_squad_members.update(members_now)
-                                # Tự động sử dụng hành động /b 3 (914038001) để đổi trang phục khi vào đội
-                                asyncio.create_task(_auto_bundle_on_squad_join(uid_g, key, iv, region))
-                                should_greet = (str(uid_g) != str(bot_uid)) or bool(members_now)
-                            else:
-                                new_joined = members_now - welcomed_squad_members
-                                if chat_code is not None and squad_code is not None and members_now:
-                                    welcomed_squad_members.intersection_update(members_now)
-                                welcomed_squad_members.update(new_joined)
-                                should_greet = bool(new_joined)
-                                if new_joined:
-                                    print(f"👋 Thành viên mới vào đội: {new_joined} — gửi lời chào!")
-
-                            if should_greet:
-                                asyncio.create_task(send_welcome(uid_g, key, iv, force=True))
-                                try:
-                                    p1 = await DEVIL1(uid_g, key, iv)
-                                    p2 = await DEVIL(uid_g, key, iv)
-                                    if p1 and online_writer:
-                                        online_writer.write(p1)
-                                        await online_writer.drain()
-                                        await asyncio.sleep(0.2)
-                                    if p2 and online_writer:
-                                        online_writer.write(p2)
-                                        await online_writer.drain()
-                                except Exception:
-                                    pass
-                        elif in_squad and current_squad_uid is not None and pkt_type_4 != 8 and not is_ext_invite:
-                            members_now = _extract_squad_players_from_0500(
-                                hex_data[10:], bot_uid, current_squad_uid, None, current_squad_code
-                            )
                             new_joined = members_now - welcomed_squad_members
-                            if new_joined:
-                                welcomed_squad_members.update(new_joined)
-                                active_squad_members.update(new_joined)
+                            if members_now:
+                                welcomed_squad_members.update(members_now)
+
+                            # Tự động sử dụng hành động /b 3 (914038001) để đổi trang phục khi vào đội
+                            if not was_in_this_squad:
+                                asyncio.create_task(_auto_bundle_on_squad_join(uid_g, key, iv, region))
+
+                            if str(uid_g) != str(bot_uid) and (not was_in_this_squad or chat_code is not None):
+                                asyncio.create_task(send_welcome(uid_g, key, iv))
+                                if not was_in_this_squad:
+                                    try:
+                                        p1 = await DEVIL1(uid_g, key, iv)
+                                        p2 = await DEVIL(uid_g, key, iv)
+                                        if p1 and online_writer:
+                                            online_writer.write(p1)
+                                            await online_writer.drain()
+                                            await asyncio.sleep(0.2)
+                                        if p2 and online_writer:
+                                            online_writer.write(p2)
+                                            await online_writer.drain()
+                                    except Exception:
+                                        pass
+                            elif new_joined:
                                 print(f"👋 Thành viên mới vào đội: {new_joined} — gửi lời chào!")
-                                asyncio.create_task(send_welcome(current_squad_uid, key, iv, force=True))
-                                try:
-                                    p1 = await DEVIL1(current_squad_uid, key, iv)
-                                    p2 = await DEVIL(current_squad_uid, key, iv)
-                                    if p1 and online_writer:
-                                        online_writer.write(p1)
-                                        await online_writer.drain()
-                                        await asyncio.sleep(0.2)
-                                    if p2 and online_writer:
-                                        online_writer.write(p2)
-                                        await online_writer.drain()
-                                except Exception:
-                                    pass
+                                asyncio.create_task(send_welcome(uid_g, key, iv, force=True))
                     except Exception:
                         pass
 
@@ -2077,6 +2045,14 @@ async def TcPOnLine(ip, port, key, iv, AutHToKen, reconnect_delay=0.5):
             online_writer = None
             in_squad = False
             current_squad_uid = None
+
+        if time.time() - conn_start < 15:
+            consecutive_fast_drops += 1
+        else:
+            consecutive_fast_drops = 0
+        if consecutive_fast_drops >= 2:
+            print("🔄 Phiên OnlineAuth đã hết hạn hoặc bị chiếm quyền — khởi tạo lại phiên đăng nhập mới...")
+            return
         await asyncio.sleep(reconnect_delay)
 # ═══════════════════════════════════════════════════════════════
 # 6bot_core.py — LUCKY TCP SUPER BOT (Chat TCP Handler - Part A)

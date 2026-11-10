@@ -7,6 +7,7 @@ import asyncio
 import time
 import sys
 import os
+import signal
 import aiohttp
 from aiohttp import web
 from cfonts import render
@@ -233,7 +234,10 @@ async def MaiiiinE():
     print(f"{PURPLE}{'═' * 60}{RESET}")
     print()
 
-    await asyncio.gather(t1, t2)
+    done, pending = await asyncio.wait([t1, t2], return_when=asyncio.FIRST_COMPLETED)
+    for p in pending:
+        p.cancel()
+    await asyncio.gather(*pending, return_exceptions=True)
 
 
 async def _handle_status(request):
@@ -293,7 +297,23 @@ async def _self_keepalive_loop():
             pass
 
 
+def _handle_sigterm(signum, frame):
+    log("WARN", f"Nhận tín hiệu dừng ({signum}) từ hệ thống — đóng kết nối cũ ngay lập tức...")
+    try:
+        if bot_core.online_writer:
+            bot_core.online_writer.close()
+        if bot_core.whisper_writer:
+            bot_core.whisper_writer.close()
+    except Exception:
+        pass
+    os._exit(0)
+
+
 async def StarTinG():
+    try:
+        signal.signal(signal.SIGTERM, _handle_sigterm)
+    except Exception:
+        pass
     await start_render_web_server()
     asyncio.create_task(_self_keepalive_loop())
 
