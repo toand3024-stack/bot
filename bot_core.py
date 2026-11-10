@@ -481,8 +481,8 @@ WELCOME_TEXT = (
     "[B][C][FFFF00]Hello! Welcome to [00FF00]LUCKY TCP BOT[FFFF00]!\n"
     "[B][C][FF6EC7]Wishing you a great time in game!\n"
     "[B][C][FFA500]━━━ ✦ CONTACT INFO ✦ ━━━\n"
-    "[B][C][FF007F]♪ TikTok : [00FFFF]tik@dtt_027\n"
-    "[B][C][00FF00]✈ Telegram: [FFFF00]tele:dtt_027\n"
+    "[B][C][FF007F]♪ TikTok : [00FFFF]@dtt_027\n"
+    "[B][C][00FF00]✈ tèlé: [FFFF00]:dtt_027\n"
     "[B][C][FF00FF]╰━━━━━━━━━━━━━━━━━━━━━╯"
 )
 WELCOMED = {}
@@ -545,8 +545,8 @@ async def DEVIL(client_id, key, iv):
 [B][C][00FF00]H A V E   A   G R E A T   G A M E !
 [FF6EC7]━━━━━━━━━━━━━━━━━━━━━━━━━━
 [B][C][FFA500]C O N T A C T   A D M I N :
-[B][C][00FFFF]tik@dtt_027
-[B][C][FFFF00]tele:dtt_027
+[B][C][FF007F]♪ TikTok : [00FFFF]@dtt_027
+[B][C][00FF00]✈ tèlé: [FFFF00]:dtt_027
 [FF00FF]━━━━━━━━━━━━━━━━━━━━━━━━━━
         """
     fields = {
@@ -582,8 +582,8 @@ async def DEVIL1(client_id, key, iv):
 [B][C][00FF00]H A V E   A   G R E A T   G A M E !
 [FF6EC7]━━━━━━━━━━━━━━━━━━━━━━━━━━
 [B][C][FFA500]C O N T A C T   A D M I N :
-[B][C][00FFFF]tik@dtt_027
-[B][C][FFFF00]tele:dtt_027
+[B][C][FF007F]♪ TikTok : [00FFFF]@dtt_027
+[B][C][00FF00]✈ tèlé: [FFFF00]:dtt_027
 [FF00FF]━━━━━━━━━━━━━━━━━━━━━━━━━━
         """
     fields = {1: int(client_id), 2: 5, 4: 50, 5: {1: int(client_id), 2: gay_text}}
