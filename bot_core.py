@@ -1768,7 +1768,7 @@ def _iter_online_packets(data: bytes):
     n = len(data)
     while idx < n:
         rem = n - idx
-        if rem >= 5 and data[idx + 1] == 0x00:
+        if rem >= 5 and data[idx] in (0x05, 0x0f, 0x12) and data[idx + 1] == 0x00:
             plen = int.from_bytes(data[idx + 2:idx + 5], "big")
             if 0 < plen <= rem - 5:
                 chunks.append(data[idx:idx + 5 + plen])
@@ -1784,11 +1784,14 @@ async def TcPOnLine(ip, port, key, iv, AutHToKen, reconnect_delay=0.5):
     global pending_ghost_future, ghost_team_id, ghost_squad_code
     global emote_hijack, bot_uid, in_squad, current_squad_uid, current_squad_code, squad_opened_event
 
-    first_connect_ts = time.time()
-    rapid_fails = 0
-    kicked_1900 = False
+    last_invite_owner = None
+    last_invite_code = None
+    last_rejoin_ts = 0.0
+
     while True:
-        conn_start = time.time()
+        was_in_squad = in_squad
+        keepalive_task = None
+        writer = None
         try:
             reader, writer = await asyncio.open_connection(ip, int(port))
             online_writer = writer
@@ -1796,6 +1799,34 @@ async def TcPOnLine(ip, port, key, iv, AutHToKen, reconnect_delay=0.5):
             writer.write(token_bytes)
             await writer.drain()
             print(f"✅ ONLINE connected to {ip}:{port}")
+
+            async def _online_keepalive(w):
+                while True:
+                    await asyncio.sleep(22)
+                    if w is None or w.is_closing() or not bot_uid:
+                        break
+                    try:
+                        ka_pkt = await createpacketinfo(int(bot_uid), key, iv)
+                        w.write(ka_pkt)
+                        await w.drain()
+                    except Exception:
+                        break
+
+            keepalive_task = asyncio.create_task(_online_keepalive(writer))
+
+            if was_in_squad and last_invite_owner and last_invite_code and str(last_invite_owner) != str(bot_uid):
+                async def _auto_rejoin_after_reconnect(owner_id, inv_code, w):
+                    try:
+                        await asyncio.sleep(0.8)
+                        if w is not None and not w.is_closing():
+                            rj_pkt = await SKANHAIYAAccepted(owner_id, inv_code, key, iv, region)
+                            if rj_pkt:
+                                w.write(rj_pkt)
+                                await w.drain()
+                                print(f"🔄 Tự động vào lại Squad của {owner_id} sau khi kết nối lại Online TCP")
+                    except Exception:
+                        pass
+                asyncio.create_task(_auto_rejoin_after_reconnect(last_invite_owner, last_invite_code, writer))
 
             while True:
                 raw_data = await reader.read(9999)
@@ -1806,22 +1837,18 @@ async def TcPOnLine(ip, port, key, iv, AutHToKen, reconnect_delay=0.5):
                 for data in _iter_online_packets(raw_data):
                     hex_data = data.hex()
 
-                    # ── Phát hiện gói 1900 (bị kick phiên Online do đăng nhập mới) ──
-                    if hex_data.startswith("19000000") or (len(hex_data) <= 120 and "190000001308" in hex_data):
-                        print("⚠️ ONLINE nhận gói 1900 (phiên bị đăng nhập đè) — đóng kết nối để làm mới phiên...")
-                        kicked_1900 = True
-                        break
-
                     # ── Status response ──
                     if hex_data.startswith("0f00") and len(hex_data) > 100:
                         try:
-                            print("📡 Received status response packet")
                             proto_part = f'08{hex_data.split("08", 1)[1]}'
                             parsed = get_available_room(proto_part)
                             if parsed:
                                 pj = json.loads(parsed)
                                 if "2" in pj and pj["2"]["data"] == 15:
-                                    player_id     = pj["5"]["data"]["1"]["data"]["1"]["data"]
+                                    player_id = pj["5"]["data"]["1"]["data"]["1"]["data"]
+                                    if str(player_id) == str(bot_uid):
+                                        continue
+                                    print("📡 Received status response packet")
                                     player_status = get_player_status(proto_part)
                                     entry = {
                                         "status":      player_status,
@@ -1893,13 +1920,17 @@ async def TcPOnLine(ip, port, key, iv, AutHToKen, reconnect_delay=0.5):
                     # ── Phát hiện lỗi 0500 {2: 5, 3: 2} (Bot chưa ở trong Squad trên Online Server) ──
                     if packet_json.get('2', {}).get('data') == 5 and packet_json.get('3', {}).get('data') == 2 and '5' not in packet_json:
                         in_squad = False
-                        if current_squad_code and online_writer:
+                        now_ts = time.time()
+                        if (last_invite_owner and last_invite_code and
+                                str(last_invite_owner) != str(bot_uid) and
+                                online_writer and (now_ts - last_rejoin_ts) > 3.0):
+                            last_rejoin_ts = now_ts
                             try:
-                                rj = await JoinSq_original(current_squad_code, key, iv)
+                                rj = await SKANHAIYAAccepted(last_invite_owner, last_invite_code, key, iv, region)
                                 if rj:
                                     online_writer.write(rj)
                                     await online_writer.drain()
-                                    print(f"🔄 Tự động vào lại Squad ({current_squad_code}) khi nhận mã 0500 {{2:5, 3:2}}")
+                                    print(f"🔄 Tự động vào lại Squad của {last_invite_owner} khi nhận mã 0500 {{2:5, 3:2}}")
                             except Exception:
                                 pass
                         continue
@@ -1913,6 +1944,17 @@ async def TcPOnLine(ip, port, key, iv, AutHToKen, reconnect_delay=0.5):
                             code = packet_json['5']['data']['8']['data']
                             if isinstance(code, (str, int)) and str(owner) != str(bot_uid):
                                 print(f"📩 Lời mời Squad từ {owner} (code={code})")
+                                last_invite_owner = owner
+                                last_invite_code = code
+                                if in_squad and current_squad_uid and str(current_squad_uid) != str(owner):
+                                    try:
+                                        exit_pkt = await ExiT(int(bot_uid) if bot_uid else None, key, iv, region)
+                                        if exit_pkt and online_writer:
+                                            online_writer.write(exit_pkt)
+                                            await online_writer.drain()
+                                            await asyncio.sleep(0.25)
+                                    except Exception:
+                                        pass
                                 join_pkt = await SKANHAIYAAccepted(owner, code, key, iv, region)
                                 if join_pkt and online_writer:
                                     await SEndPacKeT(whisper_writer, online_writer, 'OnLine', join_pkt)
@@ -1934,6 +1976,9 @@ async def TcPOnLine(ip, port, key, iv, AutHToKen, reconnect_delay=0.5):
                             current_squad_uid = uid_g
                             if squad_code is not None:
                                 current_squad_code = str(squad_code)
+                                if str(uid_g) != str(bot_uid):
+                                    last_invite_owner = uid_g
+                                    last_invite_code = str(squad_code)
                             if squad_opened_event is not None and not squad_opened_event.is_set():
                                 squad_opened_event.set()
                             print(f"✅ Đã vào Squad thành công! (Squad ID: {uid_g}, Mã nhóm: {squad_code})")
@@ -1978,6 +2023,8 @@ async def TcPOnLine(ip, port, key, iv, AutHToKen, reconnect_delay=0.5):
                             if f5.get('2', {}).get('data') == 5:
                                 in_squad = False
                                 current_squad_uid = None
+                                last_invite_owner = None
+                                last_invite_code = None
                                 WELCOMED.clear()
                                 chat_code = f5.get('17', {}).get('data')
                                 if chat_code is not None:
@@ -1987,9 +2034,6 @@ async def TcPOnLine(ip, port, key, iv, AutHToKen, reconnect_delay=0.5):
                                     print("🚪 Bị kick khỏi phòng! Đã rời khỏi kênh chat.")
                     except Exception:
                         pass
-
-                if kicked_1900:
-                    break
 
             writer.close()
             await writer.wait_closed()
@@ -2001,20 +2045,14 @@ async def TcPOnLine(ip, port, key, iv, AutHToKen, reconnect_delay=0.5):
             online_writer = None
             in_squad = False
             current_squad_uid = None
-
-        if kicked_1900:
-            await asyncio.sleep(6)
-            return
-
-        alive_sec = time.time() - conn_start
-        total_age = time.time() - first_connect_ts
-        if alive_sec < 8:
-            rapid_fails += 1
-        else:
-            rapid_fails = 0
-        if rapid_fails >= 2 or total_age > 45:
-            print("🔄 Phiên OnlineAuth cần làm mới — thoát TcPOnLine để đăng nhập lại hoàn toàn...")
-            return
+        finally:
+            if keepalive_task is not None and not keepalive_task.done():
+                keepalive_task.cancel()
+            if writer is not None and not writer.is_closing():
+                try:
+                    writer.close()
+                except Exception:
+                    pass
         await asyncio.sleep(reconnect_delay)
 # ═══════════════════════════════════════════════════════════════
 # 6bot_core.py — LUCKY TCP SUPER BOT (Chat TCP Handler - Part A)

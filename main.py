@@ -234,16 +234,7 @@ async def MaiiiinE():
     print(f"{PURPLE}{'═' * 60}{RESET}")
     print()
 
-    done, pending = await asyncio.wait([t1, t2], return_when=asyncio.FIRST_COMPLETED)
-    for task in pending:
-        task.cancel()
-    try:
-        if bot_core.online_writer:
-            bot_core.online_writer.close()
-        if bot_core.whisper_writer:
-            bot_core.whisper_writer.close()
-    except Exception:
-        pass
+    await asyncio.gather(t1, t2)
 
 
 async def _handle_status(request):
@@ -322,9 +313,6 @@ async def StarTinG():
         pass
     await start_render_web_server()
     asyncio.create_task(_self_keepalive_loop())
-    if os.getenv("RENDER"):
-        log("WAIT", "Đợi 10 giây để Render đóng hẳn phiên container cũ trước khi đăng nhập...")
-        await asyncio.sleep(10)
 
     attempt = 0
     while True:
