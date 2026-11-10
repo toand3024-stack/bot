@@ -234,10 +234,7 @@ async def MaiiiinE():
     print(f"{PURPLE}{'═' * 60}{RESET}")
     print()
 
-    done, pending = await asyncio.wait([t1, t2], return_when=asyncio.FIRST_COMPLETED)
-    for p in pending:
-        p.cancel()
-    await asyncio.gather(*pending, return_exceptions=True)
+    await asyncio.gather(t1, t2)
 
 
 async def _handle_status(request):
@@ -316,6 +313,9 @@ async def StarTinG():
         pass
     await start_render_web_server()
     asyncio.create_task(_self_keepalive_loop())
+    if os.getenv("RENDER"):
+        log("WAIT", "Đợi 4 giây để Render đóng phiên container cũ trước khi đăng nhập...")
+        await asyncio.sleep(4)
 
     attempt = 0
     while True:

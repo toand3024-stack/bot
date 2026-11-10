@@ -596,8 +596,8 @@ async def DEVIL(client_id, key, iv):
 [B][C][00FF00]H A V E   A   G R E A T   G A M E !
 [FF6EC7]━━━━━━━━━━━━━━━━━━━━━━━━━━
 [B][C][FFA500]C O N T A C T   A D M I N :
-[B][C][FF007F]♪ TikTok : [00FFFF]@dtt_027
-[B][C][00FF00]✈ tèlé: [FFFF00]:dtt_027
+[B][C][FF007F]TikTok : [00FFFF]@dtt_027
+[B][C][00FF00]Tele : [FFFF00]:dtt_027
 [FF00FF]━━━━━━━━━━━━━━━━━━━━━━━━━━
         """
     fields = {
@@ -633,8 +633,8 @@ async def DEVIL1(client_id, key, iv):
 [B][C][00FF00]H A V E   A   G R E A T   G A M E !
 [FF6EC7]━━━━━━━━━━━━━━━━━━━━━━━━━━
 [B][C][FFA500]C O N T A C T   A D M I N :
-[B][C][FF007F]♪ TikTok : [00FFFF]@dtt_027
-[B][C][00FF00]✈ tèlé: [FFFF00]:dtt_027
+[B][C][FF007F]TikTok : [00FFFF]@dtt_027
+[B][C][00FF00]Tele : [FFFF00]:dtt_027
 [FF00FF]━━━━━━━━━━━━━━━━━━━━━━━━━━
         """
     fields = {1: int(client_id), 2: 5, 4: 50, 5: {1: int(client_id), 2: gay_text}}
@@ -1826,9 +1826,7 @@ async def TcPOnLine(ip, port, key, iv, AutHToKen, reconnect_delay=0.5):
     global emote_hijack, bot_uid, in_squad, current_squad_uid, current_squad_code, squad_opened_event
     global active_squad_members, welcomed_squad_members
 
-    consecutive_fast_drops = 0
     while True:
-        conn_start = time.time()
         try:
             reader, writer = await asyncio.open_connection(ip, int(port))
             online_writer = writer
@@ -1942,7 +1940,6 @@ async def TcPOnLine(ip, port, key, iv, AutHToKen, reconnect_delay=0.5):
                     # ── Chat join → welcome + DEVIL banner + member join detection ──
                     try:
                         f5 = packet_json.get('5', {}).get('data', {})
-                        pkt_type_4 = packet_json.get('4', {}).get('data')
                         if isinstance(f5, dict):
                             uid_g = f5.get('1', {}).get('data') if isinstance(f5.get('1'), dict) else None
                             chat_code = f5.get('17', {}).get('data') if isinstance(f5.get('17'), dict) else None
@@ -1950,7 +1947,7 @@ async def TcPOnLine(ip, port, key, iv, AutHToKen, reconnect_delay=0.5):
                         else:
                             uid_g, chat_code, squad_code = None, None, None
 
-                        if uid_g is not None and (chat_code is not None or squad_code is not None or pkt_type_4 in (1, 4)):
+                        if uid_g is not None and (chat_code is not None or squad_code is not None or packet_json.get('4', {}).get('data') in (1, 4)):
                             was_in_this_squad = (in_squad and str(current_squad_uid) == str(uid_g))
                             in_squad = True
                             current_squad_uid = uid_g
@@ -1973,12 +1970,12 @@ async def TcPOnLine(ip, port, key, iv, AutHToKen, reconnect_delay=0.5):
                             if members_now:
                                 welcomed_squad_members.update(members_now)
 
-                            # Tự động sử dụng hành động /b 3 (914038001) để đổi trang phục khi vào đội
-                            if not was_in_this_squad:
-                                asyncio.create_task(_auto_bundle_on_squad_join(uid_g, key, iv, region))
-
-                            if str(uid_g) != str(bot_uid) and (not was_in_this_squad or chat_code is not None):
-                                asyncio.create_task(send_welcome(uid_g, key, iv))
+                            if str(uid_g) != str(bot_uid):
+                                if not was_in_this_squad or chat_code is not None:
+                                    asyncio.create_task(send_welcome(uid_g, key, iv))
+                                elif new_joined:
+                                    print(f"👋 Thành viên mới vào đội: {new_joined} — gửi lời chào!")
+                                    asyncio.create_task(send_welcome(uid_g, key, iv, force=True))
                                 if not was_in_this_squad:
                                     try:
                                         p1 = await DEVIL1(uid_g, key, iv)
@@ -2046,13 +2043,6 @@ async def TcPOnLine(ip, port, key, iv, AutHToKen, reconnect_delay=0.5):
             in_squad = False
             current_squad_uid = None
 
-        if time.time() - conn_start < 15:
-            consecutive_fast_drops += 1
-        else:
-            consecutive_fast_drops = 0
-        if consecutive_fast_drops >= 2:
-            print("🔄 Phiên OnlineAuth đã hết hạn hoặc bị chiếm quyền — khởi tạo lại phiên đăng nhập mới...")
-            return
         await asyncio.sleep(reconnect_delay)
 # ═══════════════════════════════════════════════════════════════
 # 6bot_core.py — LUCKY TCP SUPER BOT (Chat TCP Handler - Part A)
