@@ -323,8 +323,8 @@ async def StarTinG():
     await start_render_web_server()
     asyncio.create_task(_self_keepalive_loop())
     if os.getenv("RENDER"):
-        log("WAIT", "Đợi 5 giây để Render đóng hẳn phiên container cũ trước khi đăng nhập...")
-        await asyncio.sleep(5)
+        log("WAIT", "Đợi 10 giây để Render đóng hẳn phiên container cũ trước khi đăng nhập...")
+        await asyncio.sleep(10)
 
     attempt = 0
     while True:

@@ -1768,7 +1768,7 @@ def _iter_online_packets(data: bytes):
     n = len(data)
     while idx < n:
         rem = n - idx
-        if rem >= 5 and data[idx] in (0x05, 0x0f, 0x12) and data[idx + 1] == 0x00:
+        if rem >= 5 and data[idx + 1] == 0x00:
             plen = int.from_bytes(data[idx + 2:idx + 5], "big")
             if 0 < plen <= rem - 5:
                 chunks.append(data[idx:idx + 5 + plen])
@@ -1786,6 +1786,7 @@ async def TcPOnLine(ip, port, key, iv, AutHToKen, reconnect_delay=0.5):
 
     first_connect_ts = time.time()
     rapid_fails = 0
+    kicked_1900 = False
     while True:
         conn_start = time.time()
         try:
@@ -1804,6 +1805,12 @@ async def TcPOnLine(ip, port, key, iv, AutHToKen, reconnect_delay=0.5):
 
                 for data in _iter_online_packets(raw_data):
                     hex_data = data.hex()
+
+                    # ── Phát hiện gói 1900 (bị kick phiên Online do đăng nhập mới) ──
+                    if hex_data.startswith("19000000") or (len(hex_data) <= 120 and "190000001308" in hex_data):
+                        print("⚠️ ONLINE nhận gói 1900 (phiên bị đăng nhập đè) — đóng kết nối để làm mới phiên...")
+                        kicked_1900 = True
+                        break
 
                     # ── Status response ──
                     if hex_data.startswith("0f00") and len(hex_data) > 100:
@@ -1881,6 +1888,20 @@ async def TcPOnLine(ip, port, key, iv, AutHToKen, reconnect_delay=0.5):
                     try:
                         packet_json = json.loads(await DeCode_PackEt(hex_data[10:]))
                     except Exception:
+                        continue
+
+                    # ── Phát hiện lỗi 0500 {2: 5, 3: 2} (Bot chưa ở trong Squad trên Online Server) ──
+                    if packet_json.get('2', {}).get('data') == 5 and packet_json.get('3', {}).get('data') == 2 and '5' not in packet_json:
+                        in_squad = False
+                        if current_squad_code and online_writer:
+                            try:
+                                rj = await JoinSq_original(current_squad_code, key, iv)
+                                if rj:
+                                    online_writer.write(rj)
+                                    await online_writer.drain()
+                                    print(f"🔄 Tự động vào lại Squad ({current_squad_code}) khi nhận mã 0500 {{2:5, 3:2}}")
+                            except Exception:
+                                pass
                         continue
 
                     # ── Squad invite ──
@@ -1967,6 +1988,9 @@ async def TcPOnLine(ip, port, key, iv, AutHToKen, reconnect_delay=0.5):
                     except Exception:
                         pass
 
+                if kicked_1900:
+                    break
+
             writer.close()
             await writer.wait_closed()
             online_writer = None
@@ -1977,6 +2001,10 @@ async def TcPOnLine(ip, port, key, iv, AutHToKen, reconnect_delay=0.5):
             online_writer = None
             in_squad = False
             current_squad_uid = None
+
+        if kicked_1900:
+            await asyncio.sleep(6)
+            return
 
         alive_sec = time.time() - conn_start
         total_age = time.time() - first_connect_ts
@@ -3134,8 +3162,8 @@ async def TcPChaT(ip, port, AutHToKen, key, iv, ready_event, region,
                                 
                         if sc > 0:
                             note = ""
-                            if not in_squad and XX != 0:
-                                note = "\n[FFFF00]⚠️ Bot chưa ở trong nhóm! Hãy mời Bot vào Tổ đội hoặc dùng /join <mã_nhóm> để thấy biểu cảm."
+                            if not in_squad:
+                                note = "\n[FFFF00]⚠️ Bot chưa đồng bộ trong Tổ đội! Hãy kick Bot ra rồi mời lại 1 lần (hoặc dùng /join <mã_nhóm>) để thấy biểu cảm."
                             await safe_send_message(
                                 XX,
                                 f"[B][C][FFFFFF]✅ Đã gửi emote thành công tới {sc} người{note}",
