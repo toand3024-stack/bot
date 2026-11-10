@@ -473,7 +473,7 @@ async def safe_send_message(chat_type, message, uid, chat_id, key, iv, max_retri
 # WELCOME (Fixed Boxes)
 # ═══════════════════════════════════════════════════════════════
 
-HELP_DELAY = 0.1
+HELP_DELAY = 0.7
 WELCOME_DELAY = 1
 WELCOME_COOLDOWN = 6
 
@@ -2515,68 +2515,56 @@ async def TcPChaT(ip, port, AutHToKen, key, iv, ready_event, region,
 
 
                 # ═══════════════════════════════════════════════
-                # /help (Fixed Boxes)
+                # /help (Fixed Boxes — tối ưu độ dài & tốc độ gửi để Free Fire hiện đủ 100% lệnh)
                 # ═══════════════════════════════════════════════
-                elif inPuTMsG.strip() in ("/help", "help", "bot help", "/lucky"):
-                    h1_color = get_random_color()
-                    h2_color = get_random_color()
-                    h3_color = get_random_color()
-                    h4_color = get_random_color()
+                elif inPuTMsG.strip() in ("/help", "help", "bot help", "/lucky") or inPuTMsG.strip().startswith("/help "):
+                    h1 = """[B][C][00FFFF]╭━〔 1. ĐỘI & QUẢN TRỊ 〕━╮
+[FFFFFF]/2 - /6 : Tạo & mời Team 2-6
+/join <mã> : Vào đội theo mã
+/exit : Rời đội | /hi : Mặc Emote
+/on / /off : Bật / Tắt Bot
+[00FFFF]╰━━━━━━━━━━━━━━━━╯"""
 
-                    h1 = f"""[B][C]{h1_color}╭━━〔 LỆNH QUẢN TRỊ 〕━━╮
-[B][FFFFFF]┃ /2 - /6: Tạo & mời Team 2-6
-[B][FFFFFF]┃ /join  : Vào Squad
-[B][FFFFFF]┃ /exit  : Rời Squad
-[B][FFFFFF]┃ /spm   : Spam lời mời
-[B][FFFFFF]┃ /stp   : Dừng spam mời
-[B][FFFFFF]┃ /s1-s5 : Spam huy hiệu
-[B][FFFFFF]┃ /ban   : Spam gói ban
-[B][FFFFFF]┃ /room  : Spam phòng
-[B][C]{h1_color}╰━━━━━━━━━━━━━━━━━━━━╯"""
+                    h2 = """[B][C][FF6EC7]╭━〔 2. SPAM (ADMIN) 〕━╮
+[FFFFFF]/spm <uid> : Spam mời | /stp : Dừng
+/s1 - /s5 <uid> : Spam huy hiệu
+/ban <uid> : Spam ban | /ban_stop
+/room <id> : Spam phòng | /stop
+/reject <uid> : Spam từ chối
+[FF6EC7]╰━━━━━━━━━━━━━━━━╯"""
 
-                    h2 = f"""[B][C]{h2_color}╭━━〔 LỆNH TRONG GAME 〕━━╮
-[B][FFFFFF]┃ /e <uid> : Gửi Emote
-[B][FFFFFF]┃ /e <tên> : Emote theo tên
-[B][FFFFFF]┃ /pb <tên>: Emote (bot ko múa)
-[B][FFFFFF]┃ /evo     : Emote súng Evo
-[B][FFFFFF]┃ /evos    : Vòng lặp Evo
-[B][FFFFFF]┃ /sevos   : Dừng vòng Evo
-[B][FFFFFF]┃ /rd      : Múa ngẫu nhiên
-[B][FFFFFF]┃ /srd     : Dừng múa ngẫu nhiên
-[B][FFFFFF]┃ /sticker : Nhãn dán
-[B][FFFFFF]┃ /b       : Trang phục
-[B][FFFFFF]┃ /animation: Hoạt ảnh
-[B][C]{h2_color}╰━━━━━━━━━━━━━━━━━━━━╯"""
+                    h3 = """[B][C][00FF00]╭━〔 3. EMOTE & MÚA 〕━╮
+[FFFFFF]/e <tên/id> : Múa đôi cùng Bot
+/pb <tên/id> : Múa lẻ (Bot đứng im)
+/menu <số> : Xem danh sách Emote
+/evos | /sevos : Vòng lặp súng Evo
+/rd | /srd : Múa ngẫu nhiên
+[00FF00]╰━━━━━━━━━━━━━━━━╯"""
 
-                    h3 = f"""[B][C]{h3_color}╭━━〔 GIẢI TRÍ & TIỆN ÍCH 〕━━╮
-[B][FFFFFF]┃ /ai     : Hỏi đáp AI
-[B][FFFFFF]┃ /info   : Thông tin UID
-[B][FFFFFF]┃ /check  : Kiểm tra khoá
-[B][FFFFFF]┃ /status : Trạng thái
-[B][FFFFFF]┃ /mth    : Máy tính
-[B][FFFFFF]┃ /love   : Thả thính
-[B][FFFFFF]┃ /joke   : Truyện cười
-[B][FFFFFF]┃ /quiz   : Câu đố vui
-[B][C]{h3_color}╰━━━━━━━━━━━━━━━━━━━━╯"""
+                    h4 = """[B][C][FFFF00]╭━〔 4. TRANG PHỤC & HIỆU ỨNG 〕━╮
+[FFFFFF]/b <1-13> : Đổi trang phục
+/animation <1-12> : Hoạt ảnh
+/evo <uid> <1-21> : Emote Evo lẻ
+/title : Danh hiệu | /sticker : Nhãn
+/ghost <mã> <tên> : Vào tàng hình
+[FFFF00]╰━━━━━━━━━━━━━━━━╯"""
 
-                    h4 = f"""[B][C]{h4_color}╭━〔 LUCKY TCP PREMIUM 〕━╮
-[B][FFFFFF]┃ TCP BOT » @Redluckyxyz
-[B][FFFFFF]┃ GLORY   » @Redluckyxyz
-[B][FFFFFF]┃ LEVELUP » @Redluckyxyz
-[B][FFFFFF]┃ LIKEBOT » @Redluckyxyz
-[B][C]{h4_color}╰━━━━━━━━━━━━━━━━━━━━╯
-[B][C]{h4_color}╭━━━━〔 LIÊN HỆ 〕━━━━╮
-[B][FFFFFF]┃ Telegram: @Redluckyxyz
-[B][C]{h4_color}╰━━━━━━━━━━━━━━━━━━━━╯"""
+                    h5 = """[B][C][FF00FF]╭━〔 5. AI & TIỆN ÍCH 〕━╮
+[FFFFFF]/ai <câu hỏi> : Hỏi đáp AI
+/info | /check | /status <uid>
+/mth /love /joke /quiz : Giải trí
+[FF007F]♪ TikTok: [00FFFF]@dtt_027
+[00FF00]✈ tèlé: [FFFF00]:dtt_027
+[FF00FF]╰━━━━━━━━━━━━━━━━╯"""
 
-                    for m in (h1, h2, h3, h4):
-                        try:
-                            P = await SEndMsG(XX, m, uid, chat_id, key, iv)
-                            if P:
-                                await SEndPacKeT(whisper_writer, online_writer, 'ChaT', P)
-                            await asyncio.sleep(HELP_DELAY)
-                        except Exception:
-                            pass
+                    all_help_boxes = [h1, h2, h3, h4, h5]
+                    h_parts = inPuTMsG.strip().split()
+                    if len(h_parts) >= 2 and h_parts[1].isdigit() and 1 <= int(h_parts[1]) <= len(all_help_boxes):
+                        boxes_to_send = [all_help_boxes[int(h_parts[1]) - 1]]
+                    else:
+                        boxes_to_send = all_help_boxes
+
+                    asyncio.create_task(_run_seq_messages(boxes_to_send, HELP_DELAY, XX, uid, chat_id, key, iv))
 
                 # ═══════════════════════════════════════════════
                 # /admin
