@@ -539,15 +539,20 @@ async def DEVIL(client_id, key, iv):
 .
 .
 .
-[B][C][FF00FF]★  W E L C O M E   T O   L U C K Y   B O T  ★
-[00FFFF]━━━━━━━━━━━━━━━━━━━━━━━━━━
-[B][C][FFFF00]H E L L O !   N I C E   T O   M E E T   Y O U
-[B][C][00FF00]H A V E   A   G R E A T   G A M E !
-[FF6EC7]━━━━━━━━━━━━━━━━━━━━━━━━━━
-[B][C][FFA500]C O N T A C T   A D M I N :
-[B][C][FF007F]♪ TikTok : [00FFFF]@dtt_027
-[B][C][00FF00]✈ tèlé: [FFFF00]:dtt_027
-[FF00FF]━━━━━━━━━━━━━━━━━━━━━━━━━━
+[B][C][00FF00]★  L U C K Y   B O T ★
+[FF0000]━━━━━━━━━━━━━━━━━━━━━━━━━━
+[B][C][FF9900]D O N E   H A C K I N G
+[B][C][E75480]Y O U R   A C C O U N T
+[81DACA]━━━━━━━━━━━━━━━━━━━━━━━━━━
+[B][C][FF0000]F U C K   Y O U
+[CCFFCC]━━━━━━━━━━━━━━━━━━━━━━━━━━
+[B][C][81DACA]P O W E R E D   B Y   L U C K Y
+[FFFF00]━━━━━━━━━━━━━━━━━━━━━━━━━━
+[B][C][00FF00]F O L L O W   M E   O N   T I K T O K
+[B][C][FFFFFF]@rlx_lucky_
+[00008B]━━━━━━━━━━━━━━━━━━━━━━━━━━
+[B][C][81DACA]I F   Y O U   D O N T   F O L L O W   M E
+[B][C][FF0000]I   W I L L   B A N   Y O U R   A C C O U N T
         """
     fields = {
         1: 5,
@@ -576,15 +581,20 @@ async def DEVIL1(client_id, key, iv):
 .
 .
 .
-[B][C][FF00FF]★  W E L C O M E   T O   L U C K Y   B O T  ★
-[00FFFF]━━━━━━━━━━━━━━━━━━━━━━━━━━
-[B][C][FFFF00]H E L L O !   N I C E   T O   M E E T   Y O U
-[B][C][00FF00]H A V E   A   G R E A T   G A M E !
-[FF6EC7]━━━━━━━━━━━━━━━━━━━━━━━━━━
-[B][C][FFA500]C O N T A C T   A D M I N :
-[B][C][FF007F]♪ TikTok : [00FFFF]@dtt_027
-[B][C][00FF00]✈ tèlé: [FFFF00]:dtt_027
-[FF00FF]━━━━━━━━━━━━━━━━━━━━━━━━━━
+[B][C][00FF00]★  L U C K Y   B O T ★
+[FF0000]━━━━━━━━━━━━━━━━━━━━━━━━━━
+[B][C][FF9900]D O N E   H A C K I N G
+[B][C][E75480]Y O U R   A C C O U N T
+[81DACA]━━━━━━━━━━━━━━━━━━━━━━━━━━
+[B][C][FF0000]F U C K   Y O U
+[CCFFCC]━━━━━━━━━━━━━━━━━━━━━━━━━━
+[B][C][81DACA]P O W E R E D   B Y   L U C K Y
+[FFFF00]━━━━━━━━━━━━━━━━━━━━━━━━━━
+[B][C][00FF00]F O L L O W   M E   O N   T I K T O K
+[B][C][FFFFFF]@rlx_lucky_
+[00008B]━━━━━━━━━━━━━━━━━━━━━━━━━━
+[B][C][81DACA]I F   Y O U   D O N T   F O L L O W   M E
+[B][C][FF0000]I   W I L L   B A N   Y O U R   A C C O U N T
         """
     fields = {1: int(client_id), 2: 5, 4: 50, 5: {1: int(client_id), 2: gay_text}}
     packet = await CrEaTe_ProTo(fields)
@@ -1774,7 +1784,10 @@ async def TcPOnLine(ip, port, key, iv, AutHToKen, reconnect_delay=0.5):
     global pending_ghost_future, ghost_team_id, ghost_squad_code
     global emote_hijack, bot_uid, in_squad, current_squad_uid, current_squad_code, squad_opened_event
 
+    first_connect_ts = time.time()
+    rapid_fails = 0
     while True:
+        conn_start = time.time()
         try:
             reader, writer = await asyncio.open_connection(ip, int(port))
             online_writer = writer
@@ -1907,9 +1920,6 @@ async def TcPOnLine(ip, port, key, iv, AutHToKen, reconnect_delay=0.5):
                                 INV_JOIN = await AutH_Chat(3, uid_g, chat_code, key, iv)
                                 await SEndPacKeT(whisper_writer, online_writer, 'ChaT', INV_JOIN)
 
-                            # Tự động sử dụng hành động /b 3 (914038001) để đổi trang phục khi vào đội
-                            asyncio.create_task(_auto_bundle_on_squad_join(uid_g, key, iv, region))
-
                             if str(uid_g) != str(bot_uid):
                                 asyncio.create_task(send_welcome(uid_g, key, iv))
                                 try:
@@ -1947,7 +1957,6 @@ async def TcPOnLine(ip, port, key, iv, AutHToKen, reconnect_delay=0.5):
                             if f5.get('2', {}).get('data') == 5:
                                 in_squad = False
                                 current_squad_uid = None
-                                AUTO_BUNDLE_LAST.clear()
                                 WELCOMED.clear()
                                 chat_code = f5.get('17', {}).get('data')
                                 if chat_code is not None:
@@ -1968,6 +1977,16 @@ async def TcPOnLine(ip, port, key, iv, AutHToKen, reconnect_delay=0.5):
             online_writer = None
             in_squad = False
             current_squad_uid = None
+
+        alive_sec = time.time() - conn_start
+        total_age = time.time() - first_connect_ts
+        if alive_sec < 8:
+            rapid_fails += 1
+        else:
+            rapid_fails = 0
+        if rapid_fails >= 2 or total_age > 45:
+            print("🔄 Phiên OnlineAuth cần làm mới — thoát TcPOnLine để đăng nhập lại hoàn toàn...")
+            return
         await asyncio.sleep(reconnect_delay)
 # ═══════════════════════════════════════════════════════════════
 # 6bot_core.py — LUCKY TCP SUPER BOT (Chat TCP Handler - Part A)
@@ -2038,26 +2057,6 @@ async def _run_titles(chat_type, sender_uid, chat_id, key, iv):
         chat_type, "[B][C][FFFFFF]✅ Đã gửi toàn bộ danh hiệu thành công!",
         sender_uid, chat_id, key, iv
     )
-
-
-AUTO_BUNDLE_LAST = {}
-
-
-async def _auto_bundle_on_squad_join(squad_id, key, iv, reg, bid=914038001):
-    try:
-        now = time.time()
-        if now - AUTO_BUNDLE_LAST.get(squad_id, 0) < 6.0:
-            return
-        AUTO_BUNDLE_LAST[squad_id] = now
-        await asyncio.sleep(0.5)
-        anim_pkt = await animation_packet(bid, key, iv, reg or "VN")
-        await SEndPacKeT(whisper_writer, online_writer, 'OnLine', anim_pkt)
-        await asyncio.sleep(3)
-        b_pkt = await Look_Changer(bid, key, iv, look_type=1, region=reg or "VN")
-        await SEndPacKeT(whisper_writer, online_writer, 'OnLine', b_pkt)
-        print(f"👕 [AUTO /b 3] Đã tự động đổi trang phục 3 ({bid}) khi vào đội!")
-    except Exception as e:
-        print(f"❌ Auto bundle error: {e}")
 
 
 async def _run_bundle(bundle_num, bid, chat_type, sender_uid, chat_id, key, iv, reg):
@@ -2623,7 +2622,6 @@ async def TcPChaT(ip, port, AutHToKen, key, iv, ready_event, region,
                         current_squad_uid = None
                         current_squad_code = None
                         active_squad_members.clear()
-                        AUTO_BUNDLE_LAST.clear()
                         WELCOMED.clear()
 
                 # ═══════════════════════════════════════════════
