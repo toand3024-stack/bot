@@ -51,9 +51,65 @@ ghost_squad_code = None
 in_squad = False
 current_squad_uid = None
 current_squad_code = None
+current_team_code = None
+current_chat_code = None
+squad_auto_rejoin_allowed = False
 squad_opened_event = None
 squad_create_lock = None
 active_squad_members = set()
+active_chat_channel_uid = None
+
+
+def _reset_squad_state(clear_members=True, clear_rejoin=True):
+    """Đặt lại toàn bộ trạng thái Tổ đội hiện tại của Bot."""
+    global in_squad, current_squad_uid, current_squad_code, current_team_code, current_chat_code, squad_auto_rejoin_allowed
+    in_squad = False
+    current_squad_uid = None
+    current_squad_code = None
+    current_team_code = None
+    current_chat_code = None
+    if clear_rejoin:
+        squad_auto_rejoin_allowed = False
+    if clear_members:
+        active_squad_members.clear()
+        WELCOMED.clear()
+
+
+async def _leave_squad_chat_channel(target_uid, key, iv, chat_code=None):
+    """Rời kênh chat Squad trên Chat Server theo squad_uid (đúng chuẩn OB55)."""
+    global active_chat_channel_uid
+    if chat_code is not None:
+        WELCOMED.pop(chat_code, None)
+    _uid = target_uid or active_chat_channel_uid
+    if _uid is None:
+        return False
+    _pkt = await leave_channel_req(_uid, None, key, iv)
+    await SEndPacKeT(whisper_writer, online_writer, 'ChaT', _pkt)
+    if active_chat_channel_uid is not None and str(active_chat_channel_uid) == str(_uid):
+        active_chat_channel_uid = None
+    return True
+
+
+async def _leave_current_squad(key, iv, uid_fallback=None, delay=0.25):
+    """Rời Tổ đội hiện tại trên Online Server và thoát kênh chat Squad."""
+    _old_sq_uid = current_squad_uid or active_chat_channel_uid
+    _old_ch = current_chat_code
+    _exit_id = int(bot_uid) if bot_uid else uid_fallback
+    reg = (region or "VN").upper()
+    await SEndPacKeT(whisper_writer, online_writer, 'OnLine', await ExiT(_exit_id, key, iv, reg))
+    await _leave_squad_chat_channel(_old_sq_uid, key, iv, chat_code=_old_ch)
+    _reset_squad_state()
+    if delay > 0:
+        await asyncio.sleep(delay)
+
+
+async def _squad_sync_warning(chat_type, chat_id):
+    """Trả về cảnh báo nếu Bot chưa đồng bộ Tổ đội hoặc đang ở Tổ đội khác khung chat."""
+    if not in_squad:
+        return "\n[FFFF00]⚠️ Bot chưa đồng bộ trong Tổ đội! Hãy kick Bot ra rồi mời lại 1 lần (hoặc dùng /join <mã_nhóm>) để thấy biểu cảm."
+    if (await cHTypE(chat_type)) == 'Squid' and current_squad_uid and chat_id is not None and str(current_squad_uid) != str(chat_id):
+        return "\n[FFFF00]⚠️ Bot đang ở Tổ đội khác với khung chat này! Hãy mời lại Bot hoặc dùng /join <mã_nhóm> để đồng bộ."
+    return ""
 
 spm_tasks = {}
 ban_task = None
@@ -822,7 +878,11 @@ async def accept_squad_invite(group_id, joiner_account_id, invitee_type, key, iv
 
 
 async def leave_channel_req(channel_id, channel_type, key, iv):
-    fields = {1: 4, 2: {1: int(channel_id), 2: int(channel_type), 3: "en"}}
+    """Tạo gói tin rời kênh chat; kênh Squad bỏ field 2 để Chat Server chấp nhận."""
+    inner = {1: int(channel_id), 3: "en"}
+    if channel_type is not None and int(channel_type) not in (0, 3):
+        inner[2] = int(channel_type)
+    fields = {1: 4, 2: inner}
     return await GeneRaTePk((await CrEaTe_ProTo(fields)).hex(), '1215', key, iv)
 
 
@@ -1762,36 +1822,72 @@ async def check_ban_auto(uid):
 # ═══════════════════════════════════════════════════════════════
 
 
-def _iter_online_packets(data: bytes):
+def _drain_online_frames(data: bytes):
+    """Tách các gói tin TCP có khung header 5 byte (2 byte opcode + 3 byte length) và trả về (chunks, remainder)."""
     chunks = []
     idx = 0
     n = len(data)
     while idx < n:
         rem = n - idx
-        if rem >= 5 and data[idx] in (0x05, 0x0f, 0x12) and data[idx + 1] == 0x00:
+        if rem >= 5 and data[idx + 1] == 0x00:
             plen = int.from_bytes(data[idx + 2:idx + 5], "big")
-            if 0 < plen <= rem - 5:
+            if 0 < plen <= 131072:
+                if rem < 5 + plen:
+                    return chunks, data[idx:]
                 chunks.append(data[idx:idx + 5 + plen])
                 idx += 5 + plen
                 continue
         chunks.append(data[idx:])
-        break
+        return chunks, b""
+    return chunks, b""
+
+
+def _iter_online_packets(data: bytes):
+    chunks, rem = _drain_online_frames(data)
+    if rem:
+        chunks.append(rem)
     return chunks
 
 
 async def TcPOnLine(ip, port, key, iv, AutHToKen, reconnect_delay=0.5):
     global online_writer, whisper_writer, region
     global pending_ghost_future, ghost_team_id, ghost_squad_code
-    global emote_hijack, bot_uid, in_squad, current_squad_uid, current_squad_code, squad_opened_event
+    global emote_hijack, bot_uid, in_squad, current_squad_uid, current_squad_code
+    global current_team_code, current_chat_code, squad_auto_rejoin_allowed, squad_opened_event
+    global active_chat_channel_uid
 
     last_invite_owner = None
     last_invite_code = None
+    last_team_code = None
+    last_chat_code = None
     last_rejoin_ts = 0.0
+    last_equip_retry_ts = 0.0
+
+    async def _send_rejoin_request(target_writer, owner_id, inv_code, team_code, reason):
+        if target_writer is None or target_writer.is_closing():
+            return False
+        if team_code:
+            pkt = await JoinSq_original(team_code, key, iv)
+            if pkt:
+                target_writer.write(pkt)
+                await target_writer.drain()
+                print(f"🔄 Tự động vào lại Squad (mã {team_code}) {reason}")
+                return True
+        if owner_id and isinstance(inv_code, str) and "_" in inv_code:
+            pkt = await SKANHAIYAAccepted(owner_id, inv_code, key, iv, region)
+            if pkt:
+                target_writer.write(pkt)
+                await target_writer.drain()
+                print(f"🔄 Tự động vào lại Squad của {owner_id} {reason}")
+                return True
+        return False
 
     while True:
         was_in_squad = in_squad
         keepalive_task = None
         writer = None
+        recv_buf = b""
+        joined_squad_key = None
         try:
             reader, writer = await asyncio.open_connection(ip, int(port))
             online_writer = writer
@@ -1814,19 +1910,15 @@ async def TcPOnLine(ip, port, key, iv, AutHToKen, reconnect_delay=0.5):
 
             keepalive_task = asyncio.create_task(_online_keepalive(writer))
 
-            if was_in_squad and last_invite_owner and last_invite_code and str(last_invite_owner) != str(bot_uid):
-                async def _auto_rejoin_after_reconnect(owner_id, inv_code, w):
+            if was_in_squad and squad_auto_rejoin_allowed and (last_team_code or (last_invite_owner and last_invite_code)) and str(last_invite_owner) != str(bot_uid):
+                async def _auto_rejoin_after_reconnect(owner_id, inv_code, team_code, w):
                     try:
                         await asyncio.sleep(0.8)
-                        if w is not None and not w.is_closing():
-                            rj_pkt = await SKANHAIYAAccepted(owner_id, inv_code, key, iv, region)
-                            if rj_pkt:
-                                w.write(rj_pkt)
-                                await w.drain()
-                                print(f"🔄 Tự động vào lại Squad của {owner_id} sau khi kết nối lại Online TCP")
+                        if squad_auto_rejoin_allowed:
+                            await _send_rejoin_request(w, owner_id, inv_code, team_code, "sau khi kết nối lại Online TCP")
                     except Exception:
                         pass
-                asyncio.create_task(_auto_rejoin_after_reconnect(last_invite_owner, last_invite_code, writer))
+                asyncio.create_task(_auto_rejoin_after_reconnect(last_invite_owner, last_invite_code, last_team_code, writer))
 
             while True:
                 raw_data = await reader.read(9999)
@@ -1834,19 +1926,30 @@ async def TcPOnLine(ip, port, key, iv, AutHToKen, reconnect_delay=0.5):
                     print(f"⚠️ ONLINE disconnected from {ip}:{port} — đang kết nối lại...")
                     break
 
-                for data in _iter_online_packets(raw_data):
+                recv_buf += raw_data
+                packets, recv_buf = _drain_online_frames(recv_buf)
+                for data in packets:
                     hex_data = data.hex()
 
                     # ── Status response ──
                     if hex_data.startswith("0f00") and len(hex_data) > 100:
                         try:
-                            proto_part = f'08{hex_data.split("08", 1)[1]}'
+                            payload_0f = hex_data[10:]
+                            proto_part = payload_0f if payload_0f.startswith("08") else (f'08{payload_0f.split("08", 1)[1]}' if "08" in payload_0f else payload_0f)
                             parsed = get_available_room(proto_part)
                             if parsed:
                                 pj = json.loads(parsed)
-                                if "2" in pj and pj["2"]["data"] == 15:
-                                    player_id = pj["5"]["data"]["1"]["data"]["1"]["data"]
-                                    if str(player_id) == str(bot_uid):
+                                if isinstance(pj, dict) and isinstance(pj.get("2"), dict) and pj["2"].get("data") == 15:
+                                    f5_outer = pj.get("5", {}).get("data")
+                                    if not isinstance(f5_outer, dict):
+                                        continue
+                                    f5_1 = f5_outer.get("1")
+                                    d1_outer = f5_1.get("data") if isinstance(f5_1, dict) else None
+                                    if not isinstance(d1_outer, dict):
+                                        continue
+                                    p1_field = d1_outer.get("1")
+                                    player_id = p1_field.get("data") if isinstance(p1_field, dict) else p1_field
+                                    if not player_id or str(player_id) == str(bot_uid):
                                         continue
                                     print("📡 Received status response packet")
                                     player_status = get_player_status(proto_part)
@@ -1857,9 +1960,11 @@ async def TcPOnLine(ip, port, key, iv, AutHToKen, reconnect_delay=0.5):
                                         "full_packet": hex_data,
                                         "parsed_json": pj,
                                     }
-                                    d1 = pj["5"]["data"]["1"]["data"]
-                                    if (d1.get("3", {}).get("data") == 1 and
-                                            d1.get("11", {}).get("data") == 1):
+                                    d1 = d1_outer
+                                    f_3 = d1.get("3")
+                                    f_11 = d1.get("11")
+                                    if (isinstance(f_3, dict) and f_3.get("data") == 1 and
+                                            isinstance(f_11, dict) and f_11.get("data") == 1):
                                         entry["special_state"] = "SOLO_WITH_FLAG_1"
                                     if "IN ROOM" in player_status:
                                         rid = get_idroom_by_idplayer(proto_part)
@@ -1918,43 +2023,61 @@ async def TcPOnLine(ip, port, key, iv, AutHToKen, reconnect_delay=0.5):
                         continue
 
                     # ── Phát hiện lỗi 0500 {2: 5, 3: 2} (Bot chưa ở trong Squad trên Online Server) ──
-                    if packet_json.get('2', {}).get('data') == 5 and packet_json.get('3', {}).get('data') == 2 and '5' not in packet_json:
-                        in_squad = False
+                    err_f2 = packet_json.get('2', {}).get('data')
+                    err_f3 = packet_json.get('3', {}).get('data')
+                    if err_f2 == 5 and err_f3 == 2 and '5' not in packet_json:
+                        _reset_squad_state(clear_members=False, clear_rejoin=False)
+                        joined_squad_key = None
                         now_ts = time.time()
-                        if (last_invite_owner and last_invite_code and
-                                str(last_invite_owner) != str(bot_uid) and
-                                online_writer and (now_ts - last_rejoin_ts) > 3.0):
+                        if squad_auto_rejoin_allowed and (now_ts - last_rejoin_ts) > 3.0 and (last_team_code or (last_invite_owner and last_invite_code and str(last_invite_owner) != str(bot_uid))):
                             last_rejoin_ts = now_ts
                             try:
-                                rj = await SKANHAIYAAccepted(last_invite_owner, last_invite_code, key, iv, region)
-                                if rj:
-                                    online_writer.write(rj)
-                                    await online_writer.drain()
-                                    print(f"🔄 Tự động vào lại Squad của {last_invite_owner} khi nhận mã 0500 {{2:5, 3:2}}")
+                                await _send_rejoin_request(
+                                    online_writer,
+                                    last_invite_owner,
+                                    last_invite_code,
+                                    last_team_code,
+                                    "khi nhận mã 0500 {2:5, 3:2}",
+                                )
                             except Exception:
                                 pass
                         continue
 
-                    # ── Squad invite ──
+                    # ── Phát hiện lỗi 0500 {2: 5, 3: 23} (Nick Bot chưa sở hữu / chưa trang bị Emote nền) ──
+                    if err_f2 == 5 and err_f3 == 23 and '5' not in packet_json:
+                        now_ts = time.time()
+                        if (now_ts - last_equip_retry_ts) > 60.0:
+                            last_equip_retry_ts = now_ts
+                            print("⚠️ Server trả lỗi 0500 {2:5, 3:23}: Nick Bot chưa sở hữu hoặc chưa trang bị Emote nền — thử trang bị lại HI (909000001)...")
+                            if ToKen:
+                                asyncio.create_task(auto_equip_hi_emote(ToKen, server_url, "OB55", emote_id=909000001))
+                        continue
+
+                    # ── Phát hiện lỗi 0500 {2: 5, 3: 79} (/join thất bại vì đang ở Squad khác hoặc mã phòng sai) ──
+                    if err_f2 == 5 and err_f3 == 79 and '5' not in packet_json:
+                        print("⚠️ Server trả lỗi 0500 {2:5, 3:79}: Mã nhóm không hợp lệ hoặc Bot đang ở Tổ đội khác.")
+                        continue
+
+                    f4_code = packet_json.get('4', {}).get('data')
+
+                    # ── Squad invite (chỉ bắt gói f4 == 3 có mã mời chuỗi hợp lệ) ──
                     try:
-                        if ('5' in packet_json and 'data' in packet_json['5'] and
+                        if (f4_code == 3 and '5' in packet_json and 'data' in packet_json['5'] and
                             isinstance(packet_json['5']['data'], dict) and
                             '1' in packet_json['5']['data'] and '8' in packet_json['5']['data']):
                             owner = packet_json['5']['data']['1']['data']
                             code = packet_json['5']['data']['8']['data']
-                            if isinstance(code, (str, int)) and str(owner) != str(bot_uid):
+                            if isinstance(code, str) and code and str(owner) != str(bot_uid):
                                 print(f"📩 Lời mời Squad từ {owner} (code={code})")
                                 last_invite_owner = owner
                                 last_invite_code = code
+                                last_team_code = None
                                 if in_squad and current_squad_uid and str(current_squad_uid) != str(owner):
                                     try:
-                                        exit_pkt = await ExiT(int(bot_uid) if bot_uid else None, key, iv, region)
-                                        if exit_pkt and online_writer:
-                                            online_writer.write(exit_pkt)
-                                            await online_writer.drain()
-                                            await asyncio.sleep(0.25)
+                                        await _leave_current_squad(key, iv, uid_fallback=owner, delay=0.25)
                                     except Exception:
-                                        pass
+                                        _reset_squad_state()
+                                    joined_squad_key = None
                                 join_pkt = await SKANHAIYAAccepted(owner, code, key, iv, region)
                                 if join_pkt and online_writer:
                                     await SEndPacKeT(whisper_writer, online_writer, 'OnLine', join_pkt)
@@ -1968,38 +2091,63 @@ async def TcPOnLine(ip, port, key, iv, AutHToKen, reconnect_delay=0.5):
                             uid_g = f5.get('1', {}).get('data') if isinstance(f5.get('1'), dict) else None
                             chat_code = f5.get('17', {}).get('data') if isinstance(f5.get('17'), dict) else None
                             squad_code = f5.get('31', {}).get('data') if isinstance(f5.get('31'), dict) else None
+                            team_code_7 = f5.get('11', {}).get('data') if isinstance(f5.get('11'), dict) else None
                         else:
-                            uid_g, chat_code, squad_code = None, None, None
+                            uid_g, chat_code, squad_code, team_code_7 = None, None, None, None
 
-                        if uid_g is not None and (chat_code is not None or squad_code is not None or packet_json.get('4', {}).get('data') in (1, 4)):
+                        if uid_g is not None and f4_code not in (3, 8, 13) and (chat_code is not None or squad_code is not None or f4_code in (1, 4, 6, 18, 63)):
                             in_squad = True
                             current_squad_uid = uid_g
                             if squad_code is not None:
                                 current_squad_code = str(squad_code)
+                            if team_code_7 is not None and str(team_code_7).strip():
+                                current_team_code = str(team_code_7).strip()
                                 if str(uid_g) != str(bot_uid):
-                                    last_invite_owner = uid_g
-                                    last_invite_code = str(squad_code)
-                            if squad_opened_event is not None and not squad_opened_event.is_set():
-                                squad_opened_event.set()
-                            print(f"✅ Đã vào Squad thành công! (Squad ID: {uid_g}, Mã nhóm: {squad_code})")
+                                    last_team_code = current_team_code
                             if chat_code is not None:
-                                INV_JOIN = await AutH_Chat(3, uid_g, chat_code, key, iv)
-                                await SEndPacKeT(whisper_writer, online_writer, 'ChaT', INV_JOIN)
-
+                                current_chat_code = chat_code
+                                last_chat_code = chat_code
                             if str(uid_g) != str(bot_uid):
-                                asyncio.create_task(send_welcome(uid_g, key, iv))
-                                try:
-                                    p1 = await DEVIL1(uid_g, key, iv)
-                                    p2 = await DEVIL(uid_g, key, iv)
-                                    if p1 and online_writer:
-                                        online_writer.write(p1)
-                                        await online_writer.drain()
-                                        await asyncio.sleep(0.2)
-                                    if p2 and online_writer:
-                                        online_writer.write(p2)
-                                        await online_writer.drain()
-                                except Exception:
-                                    pass
+                                last_invite_owner = uid_g
+                                squad_auto_rejoin_allowed = True
+                            else:
+                                squad_auto_rejoin_allowed = False
+                            joined_member_info = f5.get('6', {}).get('data') if isinstance(f5.get('6'), dict) else None
+                            if isinstance(joined_member_info, dict):
+                                jm_uid = joined_member_info.get('1', {}).get('data') if isinstance(joined_member_info.get('1'), dict) else None
+                                if jm_uid is not None and str(jm_uid) != str(bot_uid):
+                                    active_squad_members.add(str(jm_uid))
+                            if str(uid_g) != str(bot_uid):
+                                active_squad_members.add(str(uid_g))
+
+                            session_key = (str(uid_g), str(chat_code or squad_code or ""))
+                            if session_key != joined_squad_key:
+                                joined_squad_key = session_key
+                                if squad_opened_event is not None and not squad_opened_event.is_set():
+                                    squad_opened_event.set()
+                                print(f"✅ Đã vào Squad thành công! (Squad ID: {uid_g}, Team Code: {team_code_7 or squad_code})")
+                                if chat_code is not None:
+                                    if active_chat_channel_uid is not None and str(active_chat_channel_uid) != str(uid_g):
+                                        await _leave_squad_chat_channel(active_chat_channel_uid, key, iv)
+                                        await asyncio.sleep(0.15)
+                                    INV_JOIN = await AutH_Chat(3, uid_g, chat_code, key, iv)
+                                    if await SEndPacKeT(whisper_writer, online_writer, 'ChaT', INV_JOIN):
+                                        active_chat_channel_uid = uid_g
+
+                                if str(uid_g) != str(bot_uid):
+                                    asyncio.create_task(send_welcome(uid_g, key, iv))
+                                    try:
+                                        p1 = await DEVIL1(uid_g, key, iv)
+                                        p2 = await DEVIL(uid_g, key, iv)
+                                        if p1 and online_writer:
+                                            online_writer.write(p1)
+                                            await online_writer.drain()
+                                            await asyncio.sleep(0.2)
+                                        if p2 and online_writer:
+                                            online_writer.write(p2)
+                                            await online_writer.drain()
+                                    except Exception:
+                                        pass
                     except Exception:
                         pass
 
@@ -2016,35 +2164,54 @@ async def TcPOnLine(ip, port, key, iv, AutHToKen, reconnect_delay=0.5):
                     except Exception:
                         pass
 
-                    # ── Kick detection ──
+                    # ── Kick / Exit detection ──
                     try:
-                        if packet_json.get('4', {}).get('data') == 8:
+                        if f4_code in (8, 13):
                             f5 = packet_json.get('5', {}).get('data', {})
-                            if f5.get('2', {}).get('data') == 5:
-                                in_squad = False
-                                current_squad_uid = None
+                            f5_dict = f5 if isinstance(f5, dict) else {}
+                            leaver_uid = f5_dict.get('1', {}).get('data') if isinstance(f5_dict.get('1'), dict) else None
+                            nested_sq = f5_dict.get('3', {}).get('data', {}) if isinstance(f5_dict.get('3'), dict) else {}
+                            is_self_exit = (
+                                (f4_code == 8 and (f5_dict.get('2', {}).get('data') == 5 or (bot_uid and str(leaver_uid) == str(bot_uid)))) or
+                                (f4_code == 13 and (not bot_uid or str(f5_dict.get('2', {}).get('data')) == str(bot_uid) or str(leaver_uid) == str(current_squad_uid or bot_uid)))
+                            )
+                            if is_self_exit:
+                                _exit_sq_uid = current_squad_uid or active_chat_channel_uid
+                                leave_ch = (
+                                    (f5_dict.get('17', {}).get('data') if isinstance(f5_dict.get('17'), dict) else None) or
+                                    (nested_sq.get('17', {}).get('data') if isinstance(nested_sq, dict) and isinstance(nested_sq.get('17'), dict) else None) or
+                                    last_chat_code or current_chat_code
+                                )
+                                _reset_squad_state()
+                                joined_squad_key = None
                                 last_invite_owner = None
                                 last_invite_code = None
-                                WELCOMED.clear()
-                                chat_code = f5.get('17', {}).get('data')
-                                if chat_code is not None:
-                                    WELCOMED.pop(chat_code, None)
-                                    LeAvE = await leave_channel_req(chat_code, 3, key, iv)
-                                    await SEndPacKeT(whisper_writer, online_writer, 'ChaT', LeAvE)
-                                    print("🚪 Bị kick khỏi phòng! Đã rời khỏi kênh chat.")
+                                last_team_code = None
+                                last_chat_code = None
+                                if await _leave_squad_chat_channel(_exit_sq_uid, key, iv, chat_code=leave_ch):
+                                    print("🚪 Đã rời/bị kick khỏi Squad! Đã rời khỏi kênh chat.")
+                            elif f4_code == 8 and leaver_uid is not None:
+                                active_squad_members.discard(str(leaver_uid))
+                                if last_invite_owner and str(leaver_uid) == str(last_invite_owner):
+                                    squad_auto_rejoin_allowed = False
                     except Exception:
                         pass
 
+            should_keep_squad_for_rejoin = in_squad
             writer.close()
             await writer.wait_closed()
             online_writer = None
-            in_squad = False
-            current_squad_uid = None
+            _reset_squad_state(clear_members=not should_keep_squad_for_rejoin, clear_rejoin=False)
+            if should_keep_squad_for_rejoin:
+                # Giữ cờ tạm để vòng kết nối lại tiếp theo nhận biết was_in_squad = True
+                in_squad = True
         except Exception as e:
             print(f"Online error: {ip}:{port} - {e}")
+            should_keep_squad_for_rejoin = in_squad
             online_writer = None
-            in_squad = False
-            current_squad_uid = None
+            _reset_squad_state(clear_members=not should_keep_squad_for_rejoin, clear_rejoin=False)
+            if should_keep_squad_for_rejoin:
+                in_squad = True
         finally:
             if keepalive_task is not None and not keepalive_task.done():
                 keepalive_task.cancel()
@@ -2331,10 +2498,19 @@ async def TcPChaT(ip, port, AutHToKen, key, iv, ready_event, region,
                 if tgt not in spm_tasks or spm_tasks[tgt].done():
                     spm_tasks[tgt] = asyncio.create_task(spm_loop(tgt, key, iv))
 
+            chat_recv_buf = b""
+            pending_chat_frames = []
+
             while True:
-                data = await reader.read(9999)
-                if not data:
-                    break
+                if not pending_chat_frames:
+                    raw_chat = await reader.read(9999)
+                    if not raw_chat:
+                        break
+                    chat_recv_buf += raw_chat
+                    pending_chat_frames, chat_recv_buf = _drain_online_frames(chat_recv_buf)
+                    if not pending_chat_frames:
+                        continue
+                data = pending_chat_frames.pop(0)
                 if not data.hex().startswith("120000"):
                     continue
 
@@ -2649,21 +2825,31 @@ async def TcPChaT(ip, port, AutHToKen, key, iv, ready_event, region,
                         )
                     else:
                         try:
-                            code = inPuTMsG.split('/join ')[1].strip()
-                            EM = await JoinSq_original(code, key, iv)
-                            sent = await SEndPacKeT(whisper_writer, online_writer, 'OnLine', EM)
-                            if sent:
+                            raw_code = inPuTMsG.split('/join ', 1)[1].strip()
+                            code = raw_code.replace(" ", "").replace("-", "")
+                            if not code.isdigit():
                                 await safe_send_message(
                                     XX,
-                                    f"[B][C]{get_random_color()}\n✅ Đã gửi yêu cầu vào Squad: {code}",
+                                    "[B][C][FFFF00]⚠️ Mã nhóm không hợp lệ hoặc bị bộ lọc chat che (***)! Hãy nhập cách chữ số (vd: /join 123 4567) hoặc mời trực tiếp Bot.",
                                     uid, chat_id, key, iv
                                 )
                             else:
-                                await safe_send_message(
-                                    XX,
-                                    "[B][C][FF0000]❌ Máy chủ Online chưa kết nối, không thể vào Squad!",
-                                    uid, chat_id, key, iv
-                                )
+                                if (in_squad or current_squad_uid) and online_writer and not online_writer.is_closing():
+                                    await _leave_current_squad(key, iv, uid_fallback=uid, delay=0.25)
+                                EM = await JoinSq_original(code, key, iv)
+                                sent = await SEndPacKeT(whisper_writer, online_writer, 'OnLine', EM)
+                                if sent:
+                                    await safe_send_message(
+                                        XX,
+                                        f"[B][C]{get_random_color()}\n✅ Đã gửi yêu cầu vào Squad: {code}",
+                                        uid, chat_id, key, iv
+                                    )
+                                else:
+                                    await safe_send_message(
+                                        XX,
+                                        "[B][C][FF0000]❌ Máy chủ Online chưa kết nối, không thể vào Squad!",
+                                        uid, chat_id, key, iv
+                                    )
                         except Exception as e:
                             print(f"Join error: {e}")
 
@@ -2682,13 +2868,7 @@ async def TcPChaT(ip, port, AutHToKen, key, iv, ready_event, region,
                             f"[B][C]{get_random_color()}\n✅ Đã rời khỏi Squad",
                             uid, chat_id, key, iv
                         )
-                        _exit_id = int(bot_uid) if bot_uid else uid
-                        await SEndPacKeT(whisper_writer, online_writer, 'OnLine', await ExiT(_exit_id, key, iv, region))
-                        in_squad = False
-                        current_squad_uid = None
-                        current_squad_code = None
-                        active_squad_members.clear()
-                        WELCOMED.clear()
+                        await _leave_current_squad(key, iv, uid_fallback=uid, delay=0)
 
                 # ═══════════════════════════════════════════════
                 # /spm <uid> (admin only)
@@ -2989,13 +3169,14 @@ async def TcPChaT(ip, port, AutHToKen, key, iv, ready_event, region,
                         evo_gun_cycle(uids, EVO_IDS, key, iv, region)
                     )
 
+                    note = await _squad_sync_warning(XX, chat_id)
                     if len(uids) <= 2:
                         reply_msg = (
                             f"[B][C][FFFFFF]✅ Bắt đầu chu kỳ Evo cho Bot & Bạn (2 người)\n"
-                            f"[FAFAFA]💡 Muốn cả phòng múa: Gõ /evos <id1> <id2>... hoặc /evos all!"
+                            f"[FAFAFA]💡 Muốn cả phòng múa: Gõ /evos <id1> <id2>... hoặc /evos all!{note}"
                         )
                     else:
-                        reply_msg = f"[B][C][FFFFFF]✅ Bắt đầu chu kỳ Evo cho {len(uids)} người (Bot, Bạn & các thành viên)!"
+                        reply_msg = f"[B][C][FFFFFF]✅ Bắt đầu chu kỳ Evo cho {len(uids)} người (Bot, Bạn & các thành viên)!{note}"
 
                     await safe_send_message(XX, reply_msg, uid, chat_id, key, iv)
 
@@ -3037,13 +3218,14 @@ async def TcPChaT(ip, port, AutHToKen, key, iv, ready_event, region,
                         random_emote_cycle(uids, key, iv, region)
                     )
 
+                    note = await _squad_sync_warning(XX, chat_id)
                     if len(uids) <= 2:
                         reply_msg = (
                             f"[B][C][FFFFFF]🎲 Bắt đầu múa ngẫu nhiên cho Bot & Bạn (2 người)!\n"
-                            f"[FAFAFA]💡 Muốn cả phòng múa: Gõ /rd <id1> <id2>... hoặc /rd all! (Gõ /srd để dừng)"
+                            f"[FAFAFA]💡 Muốn cả phòng múa: Gõ /rd <id1> <id2>... hoặc /rd all! (Gõ /srd để dừng){note}"
                         )
                     else:
-                        reply_msg = f"[B][C][FFFFFF]🎲 Bắt đầu múa ngẫu nhiên cho {len(uids)} người! (Gõ /srd để dừng)"
+                        reply_msg = f"[B][C][FFFFFF]🎲 Bắt đầu múa ngẫu nhiên cho {len(uids)} người! (Gõ /srd để dừng){note}"
 
                     await safe_send_message(XX, reply_msg, uid, chat_id, key, iv)
 
@@ -3199,9 +3381,7 @@ async def TcPChaT(ip, port, AutHToKen, key, iv, ready_event, region,
                                 pass
                                 
                         if sc > 0:
-                            note = ""
-                            if not in_squad:
-                                note = "\n[FFFF00]⚠️ Bot chưa đồng bộ trong Tổ đội! Hãy kick Bot ra rồi mời lại 1 lần (hoặc dùng /join <mã_nhóm>) để thấy biểu cảm."
+                            note = await _squad_sync_warning(XX, chat_id)
                             await safe_send_message(
                                 XX,
                                 f"[B][C][FFFFFF]✅ Đã gửi emote thành công tới {sc} người{note}",
@@ -3253,9 +3433,10 @@ async def TcPChaT(ip, port, AutHToKen, key, iv, ready_event, region,
                                 await asyncio.sleep(0.1)
                             except Exception:
                                 pass
+                        note = await _squad_sync_warning(XX, chat_id)
                         await safe_send_message(
                             XX,
-                            f"[B][C][FFFFFF]✅ Đã gửi emote Evo số {num_i}",
+                            f"[B][C][FFFFFF]✅ Đã gửi emote Evo số {num_i}{note}",
                             uid, chat_id, key, iv
                         )
                     except Exception as e:
@@ -4019,11 +4200,7 @@ async def create_and_invite_squad(team_size, caller_uid, target_uids, chat_type,
                 reply_chat_id = caller_uid
 
             # 1. Rời Squad hiện tại (nếu có) để tạo nhóm mới sạch
-            await SEndPacKeT(whisper_writer, online_writer, 'OnLine', await ExiT(bot_id_int, key, iv, reg))
-            in_squad = False
-            current_squad_uid = None
-            current_squad_code = None
-            await asyncio.sleep(0.25)
+            await _leave_current_squad(key, iv, uid_fallback=bot_id_int, delay=0.25)
 
             # 2. Tạo Squad mới chuẩn OB55 (kèm fallback nếu máy chủ dùng cấu trúc rút gọn)
             squad_opened_event = asyncio.Event()
